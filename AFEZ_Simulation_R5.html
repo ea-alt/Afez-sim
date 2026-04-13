@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AFEZ 35kV R5 — Network Simulation</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#060c14;color:#c8dff0;font-family:'Rajdhani',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+@keyframes flow{to{stroke-dashoffset:-80}}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 8px #00ff88}50%{opacity:0.4}}
+@keyframes fpulse{0%,100%{box-shadow:0 0 14px #ff3a3a}50%{box-shadow:none}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+@keyframes stamp{0%{transform:scale(1.5);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes nflash{0%{opacity:0.1}30%{opacity:1}60%{opacity:0.1}100%{opacity:1}}
+.flow{animation:flow 2s linear infinite}
+.blink{animation:blink 0.8s step-end infinite}
+.stamp{animation:stamp 0.35s cubic-bezier(0.175,0.885,0.32,1.275)}
+.nflash{animation:nflash 0.4s ease-in-out}
+header{display:flex;align-items:center;justify-content:space-between;padding:6px 18px;border-bottom:1px solid #1a3a5c;background:#0a1628;flex-shrink:0}
+.modebar{display:flex;align-items:center;gap:8px;padding:4px 18px;background:#0a1628;border-bottom:1px solid #1a3a5c;flex-shrink:0;flex-wrap:wrap}
+.legend{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:3px 18px;background:#0a1628;border-bottom:1px solid #1a3a5c;flex-shrink:0;font-size:9px;color:#4a6a8a}
+.canvas-wrap{flex:1;position:relative;overflow:hidden;cursor:grab}
+.canvas-wrap.drag{cursor:grabbing}
+#diagram{position:absolute;top:0;left:0;transform-origin:0 0}
+.htitle{font-size:14px;font-weight:700;letter-spacing:2px;color:#00c8ff;text-transform:uppercase}
+.hsub{font-size:8px;color:#4a6a8a;letter-spacing:1px;font-family:'Share Tech Mono',monospace}
+.hstats{display:flex;gap:14px;align-items:center}
+.sv{font-size:18px;font-weight:700;font-family:'Share Tech Mono',monospace}
+.sl{font-size:8px;color:#4a6a8a;letter-spacing:1px;text-transform:uppercase}
+#pulse{width:9px;height:9px;border-radius:50%;background:#00ff88;animation:pulse 2s infinite;flex-shrink:0}
+.mbtn{padding:3px 12px;border:1px solid #1a3a5c;background:transparent;color:#4a6a8a;font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;cursor:pointer;border-radius:3px;letter-spacing:1px}
+.mbtn.av{border-color:#00c8ff;background:#00c8ff;color:#000}
+.mbtn.af{border-color:#ff3a3a;background:#ff3a3a;color:#fff}
+.sep{width:1px;height:18px;background:#1a3a5c}
+#hint{font-size:10px;color:#4a6a8a;font-family:'Share Tech Mono',monospace;flex:1}
+#fstatus{font-size:10px;font-weight:700;color:#ff3a3a;font-family:'Share Tech Mono',monospace;display:none}
+#n2msg{font-size:10px;font-weight:700;color:#ff8c00;font-family:'Share Tech Mono',monospace;display:none}
+#okmsg{font-size:10px;font-weight:700;color:#00ff88;font-family:'Share Tech Mono',monospace;display:none}
+#rbtn{padding:3px 12px;border:1px solid #ff3a3a;background:rgba(255,58,58,0.12);color:#ff3a3a;font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;cursor:pointer;border-radius:3px;display:none}
+.li{display:flex;align-items:center;gap:3px}
+.ln{width:9px;height:9px;border-radius:2px;display:inline-block}
+.ll{width:16px;height:3px;border-radius:2px;display:inline-block}
+#panel-overlay{position:fixed;inset:0;z-index:199;display:none;background:rgba(6,12,20,0.55)}
+#info-panel,#cable-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(480px,93vw);max-height:84vh;background:#0a1628;border-radius:6px;z-index:200;font-family:'Share Tech Mono',monospace;box-shadow:0 16px 48px rgba(0,0,0,0.9);display:none;overflow:hidden;flex-direction:column}
+#info-panel{border:1px solid #1a3a5c}
+#cable-panel{border:1px solid #e8c84a}
+.ph{padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1a3a5c;flex-shrink:0}
+.pid{font-size:17px;font-weight:700;letter-spacing:2px}
+.pty{font-size:9px;color:#4a6a8a;letter-spacing:1px;text-transform:uppercase;margin-top:3px}
+.pcl{cursor:pointer;color:#4a6a8a;font-size:20px;line-height:1;padding:4px 8px;border-radius:3px}
+.pcl:hover{color:#ff3a3a;background:rgba(255,58,58,0.1)}
+.pb{padding:12px 16px;overflow-y:auto;max-height:calc(84vh - 76px)}
+.pr{display:flex;justify-content:space-between;align-items:flex-start;padding:4px 0;border-bottom:1px solid #0d1f35;font-size:11px;gap:10px}
+.pr:last-child{border-bottom:none}
+.pk{color:#4a6a8a;flex-shrink:0;min-width:90px}
+.pv{color:#c8dff0;text-align:right;word-break:break-word}
+.pst{margin-top:10px;padding:9px;border-radius:4px;font-size:11px;text-align:center;font-weight:700;letter-spacing:1px}
+.ok{background:rgba(0,255,136,0.08);color:#00ff88;border:1px solid #00ff88}
+.fl{background:rgba(255,58,58,0.15);color:#ff3a3a;border:1px solid #ff3a3a}
+.rs{background:rgba(0,255,136,0.13);color:#00ff88;border:1px solid #00ff88}
+.or{background:rgba(255,140,0,0.13);color:#ff8c00;border:1px solid #ff8c00}
+.why{margin-top:10px;padding:9px 11px;border-radius:4px;background:rgba(232,200,74,0.08);border:1px solid rgba(232,200,74,0.35)}
+.why-t{font-size:9px;color:#e8c84a;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px;font-weight:700}
+.why-b{font-size:10px;color:#c8dff0;line-height:1.6}
+.bldg-list{margin-top:10px;padding:9px 11px;border-radius:4px;background:rgba(0,200,255,0.05);border:1px solid rgba(0,200,255,0.2)}
+.bldg-t{font-size:9px;color:#00c8ff;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;font-weight:700}
+.bldg-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #0d1f35;font-size:10px}
+.bldg-row:last-child{border-bottom:none}
+.bldg-name{color:#c8dff0}
+.bldg-kw{color:#e8c84a;flex-shrink:0;margin-left:8px}
+.bldg-total{display:flex;justify-content:space-between;padding:5px 0 0 0;font-size:11px;font-weight:700;color:#00c8ff;border-top:1px solid #1a3a5c;margin-top:4px}
+.ds-note{margin-top:10px;padding:9px;border-radius:4px;font-size:10px;text-align:center;background:rgba(255,140,0,0.08);border:1px solid rgba(255,140,0,0.3);color:#ff8c00}
+#seq-panel{position:absolute;left:50%;bottom:50px;transform:translateX(-50%);background:#0a1628;border:1px solid #1a3a5c;border-radius:4px;padding:10px 16px;min-width:420px;max-width:560px;z-index:200;font-family:'Share Tech Mono',monospace;box-shadow:0 8px 32px rgba(0,0,0,0.9);display:none}
+.st{font-size:9px;color:#00c8ff;letter-spacing:2px;text-transform:uppercase;margin-bottom:7px;font-weight:700}
+.ss{font-size:10px;padding:3px 0;border-bottom:1px solid #1a3a5c;display:flex;align-items:center;gap:7px;color:#4a6a8a}
+.ss:last-child{border-bottom:none}
+.ss.done{color:#00ff88}
+.ss.active{color:#e8c84a;font-weight:700;animation:blink 0.5s step-end infinite}
+.sd{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.s-ok{margin-top:8px;padding:8px;border-radius:3px;background:rgba(0,255,136,0.13);border:1px solid #00ff88;color:#00ff88;font-size:11px;font-weight:700;text-align:center;letter-spacing:1px;animation:stamp 0.4s ease-out}
+.s-n2{margin-top:8px;padding:8px;border-radius:3px;background:rgba(255,140,0,0.1);border:1px solid #ff8c00;color:#ff8c00;font-size:10px;font-weight:700;text-align:center;letter-spacing:1px;animation:stamp 0.4s ease-out}
+.s-n2-sub{font-size:9px;font-weight:400;color:#c8dff0;margin-top:5px;line-height:1.5;text-align:left}
+.zc{position:absolute;left:14px;bottom:14px;display:flex;flex-direction:column;gap:4px;z-index:100}
+.zb{width:30px;height:30px;background:#0a1628;border:1px solid #1a3a5c;color:#c8dff0;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:3px;font-family:'Share Tech Mono',monospace}
+.zb:hover{background:#1a3a5c;color:#00c8ff}
+svg{display:block;user-select:none}
+.cable-hit{fill:none;stroke:transparent;stroke-width:18;cursor:pointer}
+.node-g{cursor:pointer}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="htitle">AFEZ 35kV R5 -- Network Simulation</div>
+    <div class="hsub">ALAT FREE ECONOMIC ZONE · RCT LLC · OPTION C: DS = PURE SWITCHING · MAX 2x2,500 kVA · N-1 OPEN RING · EPC-AZ-AFEZ-001-R5</div>
+  </div>
+  <div class="hstats">
+    <div><div class="sv" id="s-supply" style="color:#00ff88">100%</div><div class="sl">Network Supply</div></div>
+    <div><div class="sv" id="s-nodes" style="color:#e8c84a">12/12</div><div class="sl">Nodes Energised</div></div>
+    <div><div class="sv" id="s-time" style="color:#4a6a8a">--</div><div class="sl">Restoration</div></div>
+    <div id="pulse"></div>
+  </div>
+</header>
+
+<div class="modebar">
+  <span style="font-size:9px;color:#4a6a8a;letter-spacing:1px;font-family:'Share Tech Mono',monospace">MODE:</span>
+  <button class="mbtn av" id="btn-view" onclick="setMode('view')">VIEW</button>
+  <button class="mbtn" id="btn-fault" onclick="setMode('fault')">FAULT SIM</button>
+  <div class="sep"></div>
+  <span id="hint">VIEW: Click substation to inspect connected facilities &amp; loads  |  Click cable for specification</span>
+  <span id="fstatus" class="blink"></span>
+  <span id="n2msg"></span>
+  <span id="okmsg"></span>
+  <button id="rbtn" onclick="resetAll()">RESET</button>
+</div>
+
+<div class="legend">
+  <div class="li"><span class="ln" style="background:#e8c84a"></span>MSS source</div>
+  <div class="li"><span class="ln" style="background:#00c8ff;outline:1px dashed #ff8c00;outline-offset:1px"></span>DS switching only</div>
+  <div class="li"><span class="ln" style="background:#00ff88"></span>US 35/0.4kV</div>
+  <div class="li"><span class="ln" style="background:#b47aff"></span>TUS</div>
+  <div class="li"><span class="ln" style="background:#ff6b35;border-radius:50%"></span>MSS Direct</div>
+  <span style="width:1px;height:12px;background:#1a3a5c;display:inline-block"></span>
+  <div class="li"><span class="ll" style="background:#e8c84a"></span>240mm2 Ring</div>
+  <div class="li"><span class="ll" style="background:#00c8ff"></span>120mm2</div>
+  <div class="li"><span class="ll" style="background:#00ff88"></span>70mm2</div>
+  <div class="li"><span class="ll" style="background:#ff6b35"></span>50mm2</div>
+  <div class="li"><span class="ll" style="background:#ff3a3a"></span>Faulted</div>
+  <div class="li"><span class="ll" style="background:#ff8c00"></span>NOP Active</div>
+  <div class="li"><span class="ll" style="background:#00ff88"></span>Restored</div>
+  <span style="width:1px;height:12px;background:#1a3a5c;display:inline-block"></span>
+  <span style="font-size:9px;color:#00c8ff">FAULT SIM: click cable=N-1  |  click DS box=N-2 total loss</span>
+</div>
+
+<div class="canvas-wrap" id="wrap">
+<div id="diagram">
+<svg width="1800" height="920" id="svg">
+<defs>
+  <pattern id="sg" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20 0L0 0 0 20" fill="none" stroke="#0d1f35" stroke-width="0.5"/></pattern>
+  <pattern id="bgp" width="100" height="100" patternUnits="userSpaceOnUse"><rect width="100" height="100" fill="url(#sg)"/><path d="M100 0L0 0 0 100" fill="none" stroke="#112233" stroke-width="1"/></pattern>
+  <filter id="fG"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <filter id="fB"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <filter id="fR"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <filter id="fGN"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<rect width="1800" height="920" fill="url(#bgp)"/>
+<!-- Ring glow underlays -->
+<path d="M900,128 L520,268" fill="none" stroke="#e8c84a" stroke-width="7" opacity="0.12" filter="url(#fG)"/>
+<path d="M520,268 L900,268" fill="none" stroke="#e8c84a" stroke-width="7" opacity="0.12" filter="url(#fG)"/>
+<path d="M1280,268 L900,128" fill="none" stroke="#e8c84a" stroke-width="7" opacity="0.12" filter="url(#fG)"/>
+
+<!-- CABLES -->
+<g id="g-W141" data-cable="W141" data-type="ring" data-from="MSS" data-to="DS-01" data-size="3x(1x240/16mm2)" data-dist="1950m" data-why="N-1 analysis: under ring fault with NOP closed, one cable carries combined load of DS-01 zone 4,400kW + DS-02 zone 4,180kW = 8,580kW at 35kV = 141A normal, up to ~280A under N-1. 240mm2 rated 370A giving adequate headroom. 120mm2 rated ~220A would be overloaded under N-1 contingency.">
+  <path id="v-W141" class="flow" d="M900,128 L520,268" fill="none" stroke="#e8c84a" stroke-width="3" stroke-dasharray="12,8"/>
+  <path class="cable-hit" d="M900,128 L520,268" onclick="cableClick('W141')"/>
+</g>
+<g id="g-W151" data-cable="W151" data-type="ring" data-from="DS-01" data-to="DS-02" data-size="3x(1x240/16mm2)" data-dist="750m" data-why="Ring interconnect DS-01 to DS-02. Must carry DS-02 zone load normally and full ring load under NOP closure. Matched to W141 for uniform fault level and relay grading across ring.">
+  <path id="v-W151" class="flow" d="M520,268 L900,268" fill="none" stroke="#e8c84a" stroke-width="3" stroke-dasharray="12,8"/>
+  <path class="cable-hit" d="M520,268 L900,268" onclick="cableClick('W151')"/>
+</g>
+<g id="g-W161" data-cable="W161" data-type="nop" data-from="DS-02" data-to="DS-03" data-size="3x(1x240/16mm2)" data-dist="900m" data-why="NOP segment -- normally open. Under N-1 NOP closure this cable must carry full ring load from both directions. 240mm2 ensures thermal margin in worst-case contingency state.">
+  <path id="v-W161" d="M900,268 L1280,268" fill="none" stroke="#e8c84a" stroke-width="3" stroke-dasharray="6,5"/>
+  <path class="cable-hit" d="M900,268 L1280,268" onclick="cableClick('W161')"/>
+</g>
+<g id="g-W171" data-cable="W171" data-type="ring" data-from="DS-03" data-to="MSS" data-size="3x(1x240/16mm2)" data-dist="950m" data-why="Feeder-2 trunk MSS Bus B to DS-03. Voltage drop at full load over 950m: 240mm2 Cu = 0.075 ohm/km vs 120mm2 = 0.153 ohm/km -- half the impedance, half the volt drop.">
+  <path id="v-W171" class="flow" d="M1280,268 L900,128" fill="none" stroke="#e8c84a" stroke-width="3" stroke-dasharray="12,8"/>
+  <path class="cable-hit" d="M1280,268 L900,128" onclick="cableClick('W171')"/>
+</g>
+<g id="g-W118" data-cable="W118" data-type="direct" data-from="MSS" data-to="US-08" data-size="3x(1x50/16mm2)" data-dist="1450m">
+  <path id="v-W118" d="M900,128 L272,128" fill="none" stroke="#ff6b35" stroke-width="2" stroke-dasharray="4,3"/>
+  <path class="cable-hit" d="M900,128 L272,128" onclick="cableClick('W118')"/>
+</g>
+<g id="g-W108" data-cable="W108" data-type="direct" data-from="MSS" data-to="US-09" data-size="3x(1x50/16mm2)" data-dist="1400m">
+  <path id="v-W108" d="M900,128 L1592,418" fill="none" stroke="#ff6b35" stroke-width="2" stroke-dasharray="4,3"/>
+  <path class="cable-hit" d="M900,128 L1592,418" onclick="cableClick('W108')"/>
+</g>
+<g id="g-W101" data-cable="W101" data-type="branch" data-from="DS-01" data-to="US-01" data-size="3x(1x70/16mm2)" data-dist="500m">
+  <path id="v-W101" d="M520,268 L300,418" fill="none" stroke="#00ff88" stroke-width="2"/>
+  <path class="cable-hit" d="M520,268 L300,418" onclick="cableClick('W101')"/>
+</g>
+<g id="g-W102" data-cable="W102" data-type="branch" data-from="DS-01" data-to="US-02" data-size="3x(1x70/16mm2)" data-dist="750m">
+  <path id="v-W102" d="M520,268 L540,418" fill="none" stroke="#00ff88" stroke-width="2"/>
+  <path class="cable-hit" d="M520,268 L540,418" onclick="cableClick('W102')"/>
+</g>
+<g id="g-W103" data-cable="W103" data-type="branch" data-from="DS-01" data-to="US-05" data-size="3x(1x50/16mm2)" data-dist="1850m">
+  <path id="v-W103" d="M520,268 L148,580" fill="none" stroke="#ff6b35" stroke-width="2"/>
+  <path class="cable-hit" d="M520,268 L148,580" onclick="cableClick('W103')"/>
+</g>
+<g id="g-W302" data-cable="W302" data-type="branch" data-from="DS-01" data-to="TUS-01" data-size="3x(1x50/16mm2)" data-dist="3000m">
+  <path id="v-W302" d="M520,268 L374,268 L374,580" fill="none" stroke="#b47aff" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <path class="cable-hit" d="M520,268 L374,268 L374,580" onclick="cableClick('W302')"/>
+</g>
+<g id="g-W104" data-cable="W104" data-type="branch" data-from="DS-02" data-to="US-03" data-size="3x(1x70/16mm2)" data-dist="400m">
+  <path id="v-W104" d="M900,268 L762,418" fill="none" stroke="#00ff88" stroke-width="2"/>
+  <path class="cable-hit" d="M900,268 L762,418" onclick="cableClick('W104')"/>
+</g>
+<g id="g-W106" data-cable="W106" data-type="branch" data-from="DS-03" data-to="US-04" data-size="3x(1x120/16mm2)" data-dist="1700m">
+  <path id="v-W106" d="M1280,268 L1092,418" fill="none" stroke="#00c8ff" stroke-width="2.5"/>
+  <path class="cable-hit" d="M1280,268 L1092,418" onclick="cableClick('W106')"/>
+</g>
+<g id="g-W107" data-cable="W107" data-type="branch" data-from="DS-03" data-to="US-06" data-size="3x(1x50/16mm2)" data-dist="560m">
+  <path id="v-W107" d="M1280,268 L1292,418" fill="none" stroke="#ff6b35" stroke-width="2"/>
+  <path class="cable-hit" d="M1280,268 L1292,418" onclick="cableClick('W107')"/>
+</g>
+<g id="g-W303" data-cable="W303" data-type="branch" data-from="DS-03" data-to="US-07" data-size="3x(1x70/16mm2)" data-dist="2650m">
+  <path id="v-W303" d="M1280,268 L1452,418" fill="none" stroke="#00ff88" stroke-width="2" stroke-dasharray="5,3"/>
+  <path class="cable-hit" d="M1280,268 L1452,418" onclick="cableClick('W303')"/>
+</g>
+
+<!-- NOP symbol -->
+<circle id="nop-c" cx="1090" cy="268" r="12" fill="#060c14" stroke="#e8c84a" stroke-width="2"/>
+<text id="nop-t" x="1090" y="272" text-anchor="middle" font-size="9" fill="#e8c84a" font-family="Share Tech Mono">O</text>
+<text id="nop-l" x="1090" y="290" text-anchor="middle" font-size="7" fill="#e8c84a" font-family="Share Tech Mono">NOP</text>
+
+<!-- MSS -->
+<g class="node-g" onclick="nodeClick('MSS')">
+  <rect x="845" y="94" width="110" height="68" rx="4" fill="#1a1200" stroke="#e8c84a" stroke-width="2" filter="url(#fG)"/>
+  <rect x="845" y="94" width="110" height="19" rx="4" fill="#e8c84a" opacity="0.9"/>
+  <rect x="845" y="104" width="110" height="9" fill="#e8c84a" opacity="0.9"/>
+  <text x="900" y="104" text-anchor="middle" font-size="7" fill="#060c14" font-family="Share Tech Mono" font-weight="bold">110/35kV MSS</text>
+  <text x="900" y="126" text-anchor="middle" font-size="9" fill="#e8c84a" font-family="Rajdhani" font-weight="700">MAIN SWITCHING</text>
+  <text x="900" y="140" text-anchor="middle" font-size="8" fill="#e8c84a" font-family="Share Tech Mono">2 x 40 MVA</text>
+  <text x="900" y="154" text-anchor="middle" font-size="6.5" fill="#a89030" font-family="Share Tech Mono">BUS A | BUS B | SF6</text>
+</g>
+
+<!-- DS-01 -->
+<g class="node-g" id="ng-DS-01" onclick="nodeClick('DS-01')">
+  <ellipse id="aura-DS-01" cx="520" cy="268" rx="55" ry="36" fill="none" opacity="0"/>
+  <rect id="r-DS-01" x="472" y="240" width="96" height="56" rx="3" fill="#001a2e" stroke="#00c8ff" stroke-width="2" stroke-dasharray="7,3" filter="url(#fB)"/>
+  <rect x="472" y="240" width="96" height="18" rx="3" fill="#00c8ff" opacity="0.8"/>
+  <rect x="472" y="249" width="96" height="9" fill="#00c8ff" opacity="0.8"/>
+  <text x="520" y="250" text-anchor="middle" font-size="6.5" fill="#060c14" font-family="Share Tech Mono" font-weight="bold">DS-01 CARGO</text>
+  <text x="520" y="268" text-anchor="middle" font-size="10" fill="#00c8ff" font-family="Rajdhani" font-weight="700">DS-01</text>
+  <text x="520" y="280" text-anchor="middle" font-size="6.5" fill="#ff8c00" font-family="Share Tech Mono">SWITCHING ONLY</text>
+  <text x="520" y="290" text-anchor="middle" font-size="6" fill="#2a5a7a" font-family="Share Tech Mono">NO TX | SF6 | 36kV 25kA</text>
+  <circle id="d-DS-01" cx="560" cy="244" r="4.5" fill="#00ff88"/>
+  <g id="badge-DS-01" style="display:none"></g>
+</g>
+
+<!-- DS-02 -->
+<g class="node-g" id="ng-DS-02" onclick="nodeClick('DS-02')">
+  <ellipse id="aura-DS-02" cx="900" cy="268" rx="55" ry="36" fill="none" opacity="0"/>
+  <rect id="r-DS-02" x="852" y="240" width="96" height="56" rx="3" fill="#001a2e" stroke="#00c8ff" stroke-width="2" stroke-dasharray="7,3" filter="url(#fB)"/>
+  <rect x="852" y="240" width="96" height="18" rx="3" fill="#00c8ff" opacity="0.8"/>
+  <rect x="852" y="249" width="96" height="9" fill="#00c8ff" opacity="0.8"/>
+  <text x="900" y="250" text-anchor="middle" font-size="6.5" fill="#060c14" font-family="Share Tech Mono" font-weight="bold">DS-02 HANGAR</text>
+  <text x="900" y="268" text-anchor="middle" font-size="10" fill="#00c8ff" font-family="Rajdhani" font-weight="700">DS-02</text>
+  <text x="900" y="280" text-anchor="middle" font-size="6.5" fill="#ff8c00" font-family="Share Tech Mono">SWITCHING ONLY</text>
+  <text x="900" y="290" text-anchor="middle" font-size="6" fill="#2a5a7a" font-family="Share Tech Mono">Via ring W151</text>
+  <circle id="d-DS-02" cx="940" cy="244" r="4.5" fill="#00ff88"/>
+  <g id="badge-DS-02" style="display:none"></g>
+</g>
+
+<!-- DS-03 -->
+<g class="node-g" id="ng-DS-03" onclick="nodeClick('DS-03')">
+  <ellipse id="aura-DS-03" cx="1280" cy="268" rx="55" ry="36" fill="none" opacity="0"/>
+  <rect id="r-DS-03" x="1232" y="240" width="96" height="56" rx="3" fill="#001a2e" stroke="#00c8ff" stroke-width="2" stroke-dasharray="7,3" filter="url(#fB)"/>
+  <rect x="1232" y="240" width="96" height="18" rx="3" fill="#00c8ff" opacity="0.8"/>
+  <rect x="1232" y="249" width="96" height="9" fill="#00c8ff" opacity="0.8"/>
+  <text x="1280" y="250" text-anchor="middle" font-size="6.5" fill="#060c14" font-family="Share Tech Mono" font-weight="bold">DS-03 UTILITY</text>
+  <text x="1280" y="268" text-anchor="middle" font-size="10" fill="#00c8ff" font-family="Rajdhani" font-weight="700">DS-03</text>
+  <text x="1280" y="280" text-anchor="middle" font-size="6.5" fill="#ff8c00" font-family="Share Tech Mono">SWITCHING ONLY</text>
+  <text x="1280" y="290" text-anchor="middle" font-size="6" fill="#2a5a7a" font-family="Share Tech Mono">NO TX | SF6 | 36kV 25kA</text>
+  <circle id="d-DS-03" cx="1320" cy="244" r="4.5" fill="#00ff88"/>
+  <g id="badge-DS-03" style="display:none"></g>
+</g>
+
+<!-- US-01: SW Cargo Terminal A+B — DS-01 -->
+<g class="node-g" id="ng-US-01" onclick="nodeClick('US-01')">
+  <ellipse id="aura-US-01" cx="300" cy="418" rx="90" ry="28" fill="none" opacity="0"/>
+  <rect id="r-US-01" x="216" y="396" width="168" height="46" rx="3" fill="#001a0e" stroke="#00ff88" stroke-width="1.5"/>
+  <text x="300" y="412" text-anchor="middle" font-size="10" fill="#00ff88" font-family="Rajdhani" font-weight="700">US-01 -- Cargo Terminal A+B</text>
+  <text x="300" y="424" text-anchor="middle" font-size="7" fill="#00ff88" font-family="Share Tech Mono">SW Cargo Ph1 A+B  |  4,400 kW</text>
+  <text x="300" y="435" text-anchor="middle" font-size="6.5" fill="#2a7a50" font-family="Share Tech Mono">2x2500kVA oil  |  DS-01  |  70mm2 500m</text>
+  <circle id="d-US-01" cx="376" cy="400" r="4" fill="#00ff88"/>
+  <g id="badge-US-01" style="display:none"></g>
+</g>
+
+<!-- US-02: Cargo Services — DS-01 -->
+<g class="node-g" id="ng-US-02" onclick="nodeClick('US-02')">
+  <ellipse id="aura-US-02" cx="540" cy="418" rx="90" ry="28" fill="none" opacity="0"/>
+  <rect id="r-US-02" x="456" y="396" width="168" height="46" rx="3" fill="#001a0e" stroke="#00ff88" stroke-width="1.5"/>
+  <text x="540" y="412" text-anchor="middle" font-size="10" fill="#00ff88" font-family="Rajdhani" font-weight="700">US-02 -- Cargo Services</text>
+  <text x="540" y="424" text-anchor="middle" font-size="7" fill="#00ff88" font-family="Share Tech Mono">Office · FF · E-Commerce · Catering  |  3,890 kW</text>
+  <text x="540" y="435" text-anchor="middle" font-size="6.5" fill="#2a7a50" font-family="Share Tech Mono">2x2500kVA oil  |  DS-01  |  70mm2 750m</text>
+  <circle id="d-US-02" cx="616" cy="400" r="4" fill="#00ff88"/>
+  <g id="badge-US-02" style="display:none"></g>
+</g>
+
+<!-- US-03: Hangar/Airside — DS-02 -->
+<g class="node-g" id="ng-US-03" onclick="nodeClick('US-03')">
+  <ellipse id="aura-US-03" cx="762" cy="418" rx="90" ry="28" fill="none" opacity="0"/>
+  <rect id="r-US-03" x="678" y="396" width="168" height="46" rx="3" fill="#001a0e" stroke="#00ff88" stroke-width="1.5"/>
+  <text x="762" y="412" text-anchor="middle" font-size="10" fill="#00ff88" font-family="Rajdhani" font-weight="700">US-03 -- Hangar / Airside</text>
+  <text x="762" y="424" text-anchor="middle" font-size="7" fill="#00ff88" font-family="Share Tech Mono">GPU · Apron · ARFF · BAT · Gulfstream  |  4,180 kW</text>
+  <text x="762" y="435" text-anchor="middle" font-size="6.5" fill="#2a7a50" font-family="Share Tech Mono">2x2500kVA oil  |  DS-02  |  70mm2 400m</text>
+  <circle id="d-US-03" cx="838" cy="400" r="4" fill="#00ff88"/>
+  <g id="badge-US-03" style="display:none"></g>
+</g>
+
+<!-- US-04: Utility Area — DS-03 -->
+<g class="node-g" id="ng-US-04" onclick="nodeClick('US-04')">
+  <ellipse id="aura-US-04" cx="1092" cy="418" rx="90" ry="28" fill="none" opacity="0"/>
+  <rect id="r-US-04" x="1008" y="396" width="168" height="46" rx="3" fill="#001a0e" stroke="#00ff88" stroke-width="1.5"/>
+  <text x="1092" y="412" text-anchor="middle" font-size="10" fill="#00ff88" font-family="Rajdhani" font-weight="700">US-04 -- Utility Area</text>
+  <text x="1092" y="424" text-anchor="middle" font-size="7" fill="#00ff88" font-family="Share Tech Mono">Hotel · STP · Medical · ATC · Ops  |  2,590 kW</text>
+  <text x="1092" y="435" text-anchor="middle" font-size="6.5" fill="#2a7a50" font-family="Share Tech Mono">2x2500kVA oil  |  DS-03  |  120mm2 1700m</text>
+  <circle id="d-US-04" cx="1168" cy="400" r="4" fill="#00ff88"/>
+  <g id="badge-US-04" style="display:none"></g>
+</g>
+
+<!-- US-05: AGL Cargo — DS-01 -->
+<g class="node-g" id="ng-US-05" onclick="nodeClick('US-05')">
+  <ellipse id="aura-US-05" cx="148" cy="580" rx="78" ry="26" fill="none" opacity="0"/>
+  <rect id="r-US-05" x="72" y="560" width="152" height="42" rx="3" fill="#001a0e" stroke="#00ff88" stroke-width="1.5"/>
+  <text x="148" y="575" text-anchor="middle" font-size="10" fill="#00ff88" font-family="Rajdhani" font-weight="700">US-05 -- AGL Cargo</text>
+  <text x="148" y="587" text-anchor="middle" font-size="7" fill="#00ff88" font-family="Share Tech Mono">Airfield Lighting (ICAO Annex 14)</text>
+  <text x="148" y="597" text-anchor="middle" font-size="6.5" fill="#2a7a50" font-family="Share Tech Mono">2x400kVA oil  |  DS-01  |  50mm2 1850m</text>
+  <circle id="d-US-05" cx="216" cy="564" r="4" fill="#00ff88"/>
+  <g id="badge-US-05" style="display:none"></g>
+</g>
+
+<!-- US-06: AGL Utility — DS-03 -->
+<g class="node-g" id="ng-US-06" onclick="nodeClick('US-06')">
+  <ellipse id="aura-US-06" cx="1292" cy="418" rx="78" ry="26" fill="none" opacity="0"/>
+  <rect id="r-US-06" x="1218" y="398" width="148" height="42" rx="3" fill="#001a0e" stroke="#00ff88" stroke-width="1.5"/>
+  <text x="1292" y="413" text-anchor="middle" font-size="10" fill="#00ff88" font-family="Rajdhani" font-weight="700">US-06 -- AGL Utility</text>
+  <text x="1292" y="425" text-anchor="middle" font-size="7" fill="#00ff88" font-family="Share Tech Mono">Airfield Lighting (ICAO Annex 14)</text>
+  <text x="1292" y="435" text-anchor="middle" font-size="6.5" fill="#2a7a50" font-family="Share Tech Mono">2x400kVA oil  |  DS-03  |  50mm2 560m</text>
+  <circle id="d-US-06" cx="1358" cy="402" r="4" fill="#00ff88"/>
+  <g id="badge-US-06" style="display:none"></g>
+</g>
+
+<!-- US-07: Pump Stations — DS-03 -->
+<g class="node-g" id="ng-US-07" onclick="nodeClick('US-07')">
+  <ellipse id="aura-US-07" cx="1452" cy="418" rx="90" ry="28" fill="none" opacity="0"/>
+  <rect id="r-US-07" x="1368" y="396" width="168" height="46" rx="3" fill="#001a0e" stroke="#00ff88" stroke-width="1.5"/>
+  <text x="1452" y="412" text-anchor="middle" font-size="10" fill="#00ff88" font-family="Rajdhani" font-weight="700">US-07 -- Pump Stations</text>
+  <text x="1452" y="424" text-anchor="middle" font-size="7" fill="#00ff88" font-family="Share Tech Mono">Drainage Pump Stn 1/2/3  |  2,927 kW</text>
+  <text x="1452" y="435" text-anchor="middle" font-size="6.5" fill="#2a7a50" font-family="Share Tech Mono">2x2500kVA oil  |  DS-03  |  70mm2 2650m</text>
+  <circle id="d-US-07" cx="1528" cy="400" r="4" fill="#00ff88"/>
+  <g id="badge-US-07" style="display:none"></g>
+</g>
+
+<!-- US-08: Out-of-Site MSS Direct -->
+<g class="node-g" id="ng-US-08" onclick="nodeClick('US-08')">
+  <ellipse id="aura-US-08" cx="188" cy="128" rx="80" ry="26" fill="none" opacity="0"/>
+  <rect id="r-US-08" x="108" y="108" width="160" height="42" rx="3" fill="#1a0e00" stroke="#ff6b35" stroke-width="1.5"/>
+  <text x="188" y="123" text-anchor="middle" font-size="10" fill="#ff6b35" font-family="Rajdhani" font-weight="700">US-08 -- Out-of-Site</text>
+  <text x="188" y="135" text-anchor="middle" font-size="7" fill="#ff6b35" font-family="Share Tech Mono">External facilities (MSS Direct)</text>
+  <text x="188" y="145" text-anchor="middle" font-size="6.5" fill="#7a3a15" font-family="Share Tech Mono">2x1000kVA oil  |  50mm2 1450m</text>
+  <circle id="d-US-08" cx="260" cy="112" r="4" fill="#00ff88"/>
+  <g id="badge-US-08" style="display:none"></g>
+</g>
+
+<!-- US-09: SOCAR MSS Direct -->
+<g class="node-g" id="ng-US-09" onclick="nodeClick('US-09')">
+  <ellipse id="aura-US-09" cx="1592" cy="418" rx="80" ry="26" fill="none" opacity="0"/>
+  <rect id="r-US-09" x="1512" y="398" width="160" height="42" rx="3" fill="#1a0e00" stroke="#ff6b35" stroke-width="1.5"/>
+  <text x="1592" y="413" text-anchor="middle" font-size="10" fill="#ff6b35" font-family="Rajdhani" font-weight="700">US-09 -- SOCAR</text>
+  <text x="1592" y="425" text-anchor="middle" font-size="7" fill="#ff6b35" font-family="Share Tech Mono">Oil Facility 2,000 kW (MSS Direct)</text>
+  <text x="1592" y="435" text-anchor="middle" font-size="6.5" fill="#7a3a15" font-family="Share Tech Mono">2x2500kVA oil  |  50mm2 1400m</text>
+  <circle id="d-US-09" cx="1664" cy="402" r="4" fill="#00ff88"/>
+  <g id="badge-US-09" style="display:none"></g>
+</g>
+
+<!-- TUS-01: CCR/Aux — DS-01 -->
+<g class="node-g" id="ng-TUS-01" onclick="nodeClick('TUS-01')">
+  <ellipse id="aura-TUS-01" cx="374" cy="580" rx="70" ry="24" fill="none" opacity="0"/>
+  <rect id="r-TUS-01" x="304" y="562" width="140" height="38" rx="3" fill="#0e001a" stroke="#b47aff" stroke-width="1.5"/>
+  <text x="374" y="577" text-anchor="middle" font-size="9.5" fill="#b47aff" font-family="Rajdhani" font-weight="700">TUS-01 -- CCR / Aux</text>
+  <text x="374" y="589" text-anchor="middle" font-size="7" fill="#b47aff" font-family="Share Tech Mono">CCR rooms ~75 kW</text>
+  <text x="374" y="597" text-anchor="middle" font-size="6.5" fill="#6a3aaa" font-family="Share Tech Mono">630kVA oil  |  DS-01  |  50mm2 3000m</text>
+  <circle id="d-TUS-01" cx="436" cy="566" r="4" fill="#00ff88"/>
+  <g id="badge-TUS-01" style="display:none"></g>
+</g>
+
+<!-- Fault marker -->
+<g id="fault-mark" style="display:none">
+  <circle id="fm-c" cx="0" cy="0" r="16" fill="rgba(255,58,58,0.2)" stroke="#ff3a3a" stroke-width="2" filter="url(#fR)"/>
+  <text id="fm-x" x="0" y="5" text-anchor="middle" font-size="13" fill="#ff3a3a" font-family="Share Tech Mono" font-weight="bold">X</text>
+</g>
+<g id="ripple-g"></g>
+</svg>
+</div>
+
+<div id="panel-overlay" onclick="closeAll()"></div>
+<div id="info-panel">
+  <div class="ph"><div><div class="pid" id="ip-id">--</div><div class="pty" id="ip-type">--</div></div><div class="pcl" onclick="closeAll()">X</div></div>
+  <div class="pb" id="ip-body"></div>
+</div>
+<div id="cable-panel">
+  <div class="ph" style="background:rgba(232,200,74,0.06)"><div><div class="pid" id="cp-id" style="color:#e8c84a">--</div><div class="pty">Cable Specification</div></div><div class="pcl" onclick="closeAll()">X</div></div>
+  <div class="pb" id="cp-body"></div>
+</div>
+<div id="seq-panel">
+  <div class="st" id="seq-title">Fault Restoration Sequence</div>
+  <div id="seq-steps"></div>
+  <div id="seq-ok" style="display:none" class="s-ok">N-1 CRITERION SATISFIED -- ZERO SUSTAINED OUTAGE</div>
+  <div id="seq-n2" style="display:none" class="s-n2">N-2 EVENT -- Beyond design basis<div class="s-n2-sub">Loss of entire DS switching node affects all directly connected US substations with no alternate 35kV supply path to those busbars. N-2 is beyond IEC/ICAO N-1 requirements. The only way to prevent this would be direct MSS feeds to every US -- requiring 21+ MSS bays, which is physically impossible at this installation.</div></div>
+</div>
+<div class="zc">
+  <button class="zb" onclick="doZoom(1.2)">+</button>
+  <button class="zb" onclick="doZoom(0.83)">-</button>
+  <button class="zb" style="font-size:10px" onclick="resetView()">H</button>
+</div>
+</div>
+
+<script>
+var TOTAL = 12;
+var PATHS = {
+  "DS-01":["W141"],"DS-02":["W141","W151"],"DS-03":["W171"],
+  "US-01":["W141","W101"],"US-02":["W141","W102"],
+  "US-05":["W141","W103"],"TUS-01":["W141","W302"],
+  "US-03":["W141","W151","W104"],
+  "US-04":["W171","W106"],
+  "US-06":["W171","W107"],"US-07":["W171","W303"],
+  "US-08":["W118"],"US-09":["W108"]
+};
+var CXY={W141:{x:700,y:194},W151:{x:710,y:260},W161:{x:1090,y:260},W171:{x:1100,y:194},
+  W118:{x:586,y:126},W108:{x:1246,y:278},W101:{x:408,y:342},W102:{x:528,y:342},
+  W103:{x:332,y:424},W302:{x:380,y:424},W104:{x:828,y:342},W106:{x:1184,y:342},
+  W107:{x:1284,y:342},W303:{x:1366,y:342}};
+var NC={
+  "DS-01":{x:520,y:268},"DS-02":{x:900,y:268},"DS-03":{x:1280,y:268},
+  "US-01":{x:300,y:418},"US-02":{x:540,y:418},"US-03":{x:762,y:418},
+  "US-04":{x:1092,y:418},"US-05":{x:148,y:580},"US-06":{x:1292,y:418},
+  "US-07":{x:1452,y:418},"US-08":{x:188,y:128},"US-09":{x:1592,y:418},"TUS-01":{x:374,y:580}
+};
+var NI={
+  "MSS":{color:"#e8c84a",type:"Main Switching Station -- Source (not counted)",
+    rows:[["Voltage","110/35 kV"],["Capacity","2 x 40 MVA"],["Switchgear","36kV 16kA SF6"],["Bus sections","Bus A + Bus B"],["Ring feeders","DS-01 via W141, DS-03 via W171"],["MSS Direct","US-08 (W118), US-09 (W108)"]],bldgs:[]},
+  "DS-01":{color:"#00c8ff",type:"Distribution SS -- Cargo Zone (SWITCHING ONLY -- Option C)",
+    rows:[["Function","Pure 35kV switching node -- NO transformers"],["Switchgear","36kV 25kA 1000A SF6 double busbar"],["US fed","US-01, US-02, US-05, TUS-01"],["Ring out","DS-02 via W151"],["Zone total","8,290 kW installed"]],bldgs:[]},
+  "DS-02":{color:"#00c8ff",type:"Distribution SS -- Hangar Zone (SWITCHING ONLY -- Option C)",
+    rows:[["Function","Pure 35kV switching node -- NO transformers"],["Switchgear","36kV 25kA 1000A SF6 double busbar"],["US fed","US-03"],["Supply","Via ring W151 from DS-01"],["NOP to","DS-03 via W161 (normally open)"]],bldgs:[]},
+  "DS-03":{color:"#00c8ff",type:"Distribution SS -- Utility Zone (SWITCHING ONLY -- Option C)",
+    rows:[["Function","Pure 35kV switching node -- NO transformers"],["Switchgear","36kV 25kA 1000A SF6 double busbar"],["US fed","US-04, US-06, US-07"],["Supply","MSS Bus B via W171"],["NOP from","DS-02 via W161 (normally open)"]],bldgs:[]},
+  "US-01":{color:"#00ff88",type:"Unit SS -- Cargo Terminal A+B",
+    rows:[["Supply","DS-01 Bus A+B"],["Transformers","2 x 2,500 kVA oil-type ONAN"],["Protection","87T + 50/51 + 51N"],["Cable","W101/201 -- 70mm2 -- 500m"],["Installed load","4,400 kW"],["Max demand 0.75","3,300 kW"]],
+    bldgs:[["SW Cargo Terminal Ph1 -- Block A",2200,8],["SW Cargo Terminal Ph1 -- Block B",2200,8]]},
+  "US-02":{color:"#00ff88",type:"Unit SS -- Cargo Services",
+    rows:[["Supply","DS-01 Bus A+B"],["Transformers","2 x 2,500 kVA oil-type ONAN"],["Protection","87T + 50/51 + 51N"],["Cable","W102/202 -- 70mm2 -- 750m"],["Installed load","3,890 kW"],["Max demand 0.75","2,918 kW"]],
+    bldgs:[["SW Office (Airport Office)",970,7],["Freight Forwarder Terminals",1100,24],["E-Commerce",890,28],["Catering Facility",800,27],["QRT / Call Forward / Dolly",30,12],["GSE Storage",100,18]]},
+  "US-03":{color:"#00ff88",type:"Unit SS -- Hangar / Airside",
+    rows:[["Supply","DS-02 Bus A+B"],["Transformers","2 x 2,500 kVA oil-type ONAN"],["Protection","87T + 50/51 + 51N"],["Cable","W104/204 -- 70mm2 -- 400m"],["Installed load","4,180 kW"],["Max demand 0.75","3,135 kW"]],
+    bldgs:[["GPU Systems + Apron Lighting",2100,14],["GPU for 6 Aircraft",1000,0],["Gulfstream Hangar",400,4],["Business Aviation Terminal",300,3],["ARFF -- Air Fire and Rescue",350,9],["Equine Transit",30,16]]},
+  "US-04":{color:"#00ff88",type:"Unit SS -- Utility Area",
+    rows:[["Supply","DS-03 Bus A+B"],["Transformers","2 x 2,500 kVA oil-type ONAN"],["Protection","87T + 50/51 + 51N"],["Cable","W106/206 -- 120mm2 -- 1700m"],["Installed load","2,590 kW"],["Max demand 0.75","1,943 kW"]],
+    bldgs:[["Hotel",1000,25],["Sewage Treatment Plant",500,34],["Medical Center",400,22],["Airport Operations",130,6],["ATC Tower",200,11],["Car Showroom",50,23],["Bus Station",30,1],["Radar",80,35],["Sewage Pumping Station",200,29]]},
+  "US-05":{color:"#00ff88",type:"Unit SS -- AGL Cargo Side (ICAO Annex 14)",
+    rows:[["Supply","DS-01 Bus A+B"],["Transformers","2 x 400 kVA oil-type"],["Protection","50/51 + 51N"],["Cable","W103/203 -- 50mm2 -- 1850m"],["Note","Auto bus coupler for AGL continuity -- ICAO requirement"]],
+    bldgs:[["Airfield Ground Lighting -- Cargo side",0,0]]},
+  "US-06":{color:"#00ff88",type:"Unit SS -- AGL Utility Side (ICAO Annex 14)",
+    rows:[["Supply","DS-03 Bus A+B"],["Transformers","2 x 400 kVA oil-type"],["Protection","50/51 + 51N"],["Cable","W107/207 -- 50mm2 -- 560m"],["Note","Auto bus coupler for AGL continuity -- ICAO requirement"]],
+    bldgs:[["Airfield Ground Lighting -- Utility side",0,0]]},
+  "US-07":{color:"#00ff88",type:"Unit SS -- Drainage Pump Stations",
+    rows:[["Supply","DS-03 Bus A+B"],["Transformers","2 x 2,500 kVA oil-type ONAN"],["Protection","87T + 50/51 + 51N"],["Cable","W303 -- 70mm2 -- 2650m"],["Installed load","2,927 kW"],["Max demand 0.75","2,195 kW"]],
+    bldgs:[["Drainage Pump Station No.1",1067,21],["Drainage Pump Station No.2",605,21],["Drainage Pump Station No.3",1255,21]]},
+  "US-08":{color:"#ff6b35",type:"Unit SS -- Out-of-Site Electrification (MSS Direct)",
+    rows:[["Supply","MSS DIRECT -- W118 / W218"],["Transformers","2 x 1,000 kVA oil-type"],["Cable","50mm2 -- 1450m x2"],["Note","Independent of ring topology"]],
+    bldgs:[["External site facilities",0,0]]},
+  "US-09":{color:"#ff6b35",type:"Unit SS -- SOCAR Oil Facility (MSS Direct)",
+    rows:[["Supply","MSS DIRECT -- W108 / W208"],["Transformers","2 x 2,500 kVA oil-type"],["Cable","50mm2 -- 1400m x2"],["Installed load","2,000 kW"],["Note","Third-party tenant -- independent of ring"]],
+    bldgs:[["SOCAR Oil Facility",2000,17]]},
+  "TUS-01":{color:"#b47aff",type:"Transformer Unit SS -- CCR / Auxiliary",
+    rows:[["Supply","DS-01 outgoing bay"],["Transformer","630 kVA oil-type"],["Cable","W302 -- 50mm2 -- 3000m"],["Installed load","~75 kW"]],
+    bldgs:[["Substation CCR rooms",75,19]]}
+};
+var DSF={
+  "DS-01":{direct:["US-01","US-02","US-05","TUS-01"],viaRing:["DS-02","US-03"],steps:[
+    {t:"DS-01 total loss -- SF6 switchgear fault",ms:0},
+    {t:"W141 feeder CB trips at MSS Bus A",ms:300},
+    {t:"US-01, US-02, US-05, TUS-01 -- SUPPLY LOST (no alternate path to DS-01 busbars)",ms:700},
+    {t:"DS-02 loses W151 ring feed -- US-03 also LOST",ms:1100},
+    {t:"SCADA: DS-02 de-energised -- initiates NOP closure",ms:2200},
+    {t:"NOP closes: MSS Bus B -- DS-03 -- W161 -- DS-02 RESTORED",ms:3400,partial:true},
+    {t:"US-03 restored via DS-02 from DS-03 (orange = via NOP)",ms:4200},
+    {t:"US-01, US-02, US-05, TUS-01 remain dark -- N-2 event",ms:5000,done:true}
+  ]},
+  "DS-02":{direct:["US-03"],viaRing:[],steps:[
+    {t:"DS-02 total loss -- SF6 switchgear fault",ms:0},
+    {t:"Ring segments W151 and W161 both open at DS-02",ms:300},
+    {t:"US-03 -- SUPPLY LOST (cable connects only to DS-02 busbars)",ms:700},
+    {t:"DS-01 and DS-03 unaffected -- on normal supply",ms:1200},
+    {t:"US-03 remains dark -- N-2 event, no alternate path",ms:2500,done:true}
+  ]},
+  "DS-03":{direct:["US-04","US-06","US-07"],viaRing:[],steps:[
+    {t:"DS-03 total loss -- SF6 switchgear fault",ms:0},
+    {t:"W171 feeder CB trips at MSS Bus B",ms:300},
+    {t:"US-04, US-06, US-07 -- SUPPLY LOST (no alternate path)",ms:700},
+    {t:"DS-01 and DS-02 unaffected -- on normal supply",ms:1200},
+    {t:"US-04, US-06, US-07 remain dark -- N-2 event",ms:2000,done:true}
+  ]}
+};
+var mode="view",fC=null,fDS=null,nSt={},tmrs=[],rK=0,sc=0.68,px=20,py=20,drag=false,dsx,dsy;
+var wrap=document.getElementById('wrap'),diag=document.getElementById('diagram');
+function apT(){diag.style.transform="translate("+px+"px,"+py+"px) scale("+sc+")";}apT();
+wrap.addEventListener('wheel',function(e){e.preventDefault();var r=wrap.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,d=e.deltaY<0?1.1:0.91,ns=Math.max(0.25,Math.min(3,sc*d));px=mx-(mx-px)*(ns/sc);py=my-(my-py)*(ns/sc);sc=ns;apT();},{passive:false});
+wrap.addEventListener('mousedown',function(e){if(e.target.closest('.node-g')||e.target.closest('.cable-hit')||e.target.closest('#info-panel')||e.target.closest('#cable-panel')||e.target.closest('#seq-panel')||e.target.closest('.zc')||e.target.closest('.modebar'))return;drag=true;dsx=e.clientX-px;dsy=e.clientY-py;wrap.classList.add('drag');});
+window.addEventListener('mousemove',function(e){if(drag){px=e.clientX-dsx;py=e.clientY-dsy;apT();}});
+window.addEventListener('mouseup',function(){drag=false;wrap.classList.remove('drag');});
+function doZoom(f){sc=Math.max(0.25,Math.min(3,sc*f));apT();}
+function resetView(){sc=0.68;px=20;py=20;apT();}
+function setMode(m){mode=m;document.getElementById('btn-view').className='mbtn'+(m==='view'?' av':'');document.getElementById('btn-fault').className='mbtn'+(m==='fault'?' af':'');document.getElementById('hint').textContent=m==='view'?'VIEW: Click substation to inspect connected facilities and loads  |  Click cable for specification':'FAULT SIM: Click any CABLE for N-1 cable fault  |  Click DS-01/DS-02/DS-03 for N-2 total switching node loss';if(m==='view')resetAll();}
+function clrT(){tmrs.forEach(function(t){clearTimeout(t);});tmrs=[];}
+function closeAll(){document.getElementById('info-panel').style.display='none';document.getElementById('cable-panel').style.display='none';document.getElementById('panel-overlay').style.display='none';}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeAll();});
+function getBase(id){
+  if(id.indexOf('DS')===0)return{fill:'#001a2e',stroke:'#00c8ff',dash:'7,3'};
+  if(id.indexOf('TUS')===0)return{fill:'#0e001a',stroke:'#b47aff',dash:''};
+  if(id==='US-08'||id==='US-09')return{fill:'#1a0e00',stroke:'#ff6b35',dash:''};
+  return{fill:'#001a0e',stroke:'#00ff88',dash:''};
+}
+function getDims(id){
+  if(id.indexOf('DS')===0)return{w:96,h:56};
+  if(id==='US-05'||id==='US-06')return{w:152,h:42};
+  if(id.indexOf('TUS')===0)return{w:140,h:38};
+  return{w:168,h:46};
+}
+function mkBadge(id,type){
+  var d=getDims(id),w=d.w,h=d.h,lbl=type==='fault'?'SUPPLY LOST':type==='restored'?'RESTORED':type==='orange'?'VIA NOP':'';
+  var col=type==='fault'?'#ff3a3a':type==='orange'?'#ff8c00':'#00ff88';
+  var cls=type==='fault'?' class="blink"':' class="stamp"';
+  return '<rect x="3" y="'+(h-18)+'" width="'+(w-6)+'" height="15" rx="2" fill="'+col+'" fill-opacity="0.15"/><rect x="3" y="'+(h-18)+'" width="'+(w-6)+'" height="15" rx="2" fill="none" stroke="'+col+'" stroke-width="1.5"/><text x="'+(w/2)+'" y="'+(h-7)+'" text-anchor="middle" font-size="7.5" fill="'+col+'" font-family="Share Tech Mono" font-weight="bold"'+cls+'>'+lbl+'</text>';
+}
+function setNS(id,st){
+  nSt[id]=st;
+  var r=document.getElementById('r-'+id),dot=document.getElementById('d-'+id),aura=document.getElementById('aura-'+id),badge=document.getElementById('badge-'+id);
+  if(!r)return;
+  var b=getBase(id);
+  if(st==='fault'){r.style.fill='#2a0000';r.style.stroke='#ff3a3a';r.style.strokeWidth='2';r.style.strokeDasharray='';r.removeAttribute('filter');if(dot)dot.setAttribute('fill','#ff3a3a');if(aura){aura.setAttribute('fill','#ff3a3a');aura.style.opacity='0.15';}if(badge){badge.style.display='block';badge.innerHTML=mkBadge(id,'fault');}}
+  else if(st==='flashing'){r.style.fill='#003300';r.style.stroke='#00ff88';r.classList.add('nflash');if(dot)dot.setAttribute('fill','#00ff88');var rr=r;setTimeout(function(){rr.classList.remove('nflash');},420);}
+  else if(st==='restored'){r.style.fill=b.fill;r.style.stroke='#00ff88';r.style.strokeWidth='2.5';r.style.strokeDasharray=b.dash;if(id.indexOf('DS')===0)r.setAttribute('filter','url(#fB)');if(dot)dot.setAttribute('fill','#00ff88');if(aura){aura.setAttribute('fill','#00ff88');aura.style.opacity='0.13';}if(badge){badge.style.display='block';badge.innerHTML=mkBadge(id,'restored');}}
+  else if(st==='orange'){r.style.fill=b.fill;r.style.stroke='#ff8c00';r.style.strokeWidth='2.5';r.style.strokeDasharray=b.dash;if(dot)dot.setAttribute('fill','#ff8c00');if(aura){aura.setAttribute('fill','#ff8c00');aura.style.opacity='0.13';}if(badge){badge.style.display='block';badge.innerHTML=mkBadge(id,'orange');}}
+  else{r.style.fill=b.fill;r.style.stroke=b.stroke;r.style.strokeWidth=id.indexOf('DS')===0?'2':'1.5';r.style.strokeDasharray=b.dash;if(id.indexOf('DS')===0)r.setAttribute('filter','url(#fB)');else r.removeAttribute('filter');if(dot)dot.setAttribute('fill','#00ff88');if(aura){aura.setAttribute('fill','none');aura.style.opacity='0';}if(badge){badge.style.display='none';badge.innerHTML='';}}
+}
+function ripple(id,col){
+  var nc=NC[id];if(!nc)return;
+  var k=rK++,g=document.getElementById('ripple-g'),el=document.createElementNS('http://www.w3.org/2000/svg','g');el.id='rp'+k;
+  el.innerHTML='<circle cx="'+nc.x+'" cy="'+nc.y+'" r="14" fill="none" stroke="'+col+'" stroke-width="3" opacity="0.9"><animate attributeName="r" from="14" to="70" dur="1s" fill="freeze"/><animate attributeName="opacity" from="0.9" to="0" dur="1s" fill="freeze"/></circle>';
+  g.appendChild(el);setTimeout(function(){var rm=document.getElementById('rp'+k);if(rm)rm.remove();},1400);
+}
+function sC(id,o){var v=document.getElementById('v-'+id);if(!v)return;if(o.stroke)v.style.stroke=o.stroke;if(o.sw)v.style.strokeWidth=o.sw;if(o.dash!==undefined)v.style.strokeDasharray=o.dash;if(o.flow===true)v.classList.add('flow');if(o.flow===false)v.classList.remove('flow');if(o.filter)v.setAttribute('filter',o.filter);else v.removeAttribute('filter');}
+function setNOP(on){var v=document.getElementById('v-W161'),c=document.getElementById('nop-c'),t=document.getElementById('nop-t'),l=document.getElementById('nop-l');if(on){v.style.stroke='#ff8c00';v.style.strokeDasharray='8,4';v.classList.add('flow');v.setAttribute('filter','url(#fG)');c.setAttribute('stroke','#ff8c00');t.setAttribute('fill','#ff8c00');l.setAttribute('fill','#ff8c00');l.textContent='CLOSED';}else{v.style.stroke='#e8c84a';v.style.strokeDasharray='6,5';v.classList.remove('flow');v.removeAttribute('filter');c.setAttribute('stroke','#e8c84a');t.setAttribute('fill','#e8c84a');l.setAttribute('fill','#e8c84a');l.textContent='NOP';}}
+function updStats(){var fc=0;for(var k in nSt){if(nSt[k]==='fault')fc++;}var en=TOTAL-fc,pct=Math.round(en/TOTAL*100);var ss=document.getElementById('s-supply');ss.textContent=pct+'%';ss.style.color=fc>0?'#ff3a3a':'#00ff88';var sn=document.getElementById('s-nodes');sn.textContent=en+'/'+TOTAL;sn.style.color=fc>0?'#ff3a3a':'#e8c84a';var p=document.getElementById('pulse');p.style.background=fc>0?'#ff3a3a':'#00ff88';p.style.animation=fc>0?'fpulse 0.5s infinite':'pulse 2s infinite';}
+function bldSeq(steps,title){document.getElementById('seq-title').textContent=title||'Fault Restoration Sequence';var c=document.getElementById('seq-steps');c.innerHTML='';for(var i=0;i<steps.length;i++){var d=document.createElement('div');d.className='ss';d.id='ssi'+i;d.innerHTML='<div class="sd"></div>'+steps[i].t;c.appendChild(d);}document.getElementById('seq-ok').style.display='none';document.getElementById('seq-n2').style.display='none';document.getElementById('seq-panel').style.display='block';}
+function animSeq(steps){for(var i=0;i<steps.length;i++){(function(idx){tmrs.push(setTimeout(function(){if(idx>0){var p=document.getElementById('ssi'+(idx-1));if(p){p.classList.remove('active');p.classList.add('done');}}var el=document.getElementById('ssi'+idx);if(el){el.classList.add('active');var d=el.querySelector('.sd');if(d){d.style.background='#e8c84a';d.style.boxShadow='0 0 8px #e8c84a';}}},steps[idx].ms));})(i);}}
+function cableClick(cid){
+  if(mode!=='fault'||fC||fDS)return;
+  closeAll();fC=cid;
+  var g=document.getElementById('g-'+cid),type=g?g.dataset.type:'branch',from=g?g.dataset.from:'',to=g?g.dataset.to:'';
+  sC(cid,{stroke:'#ff3a3a',sw:'4',dash:'6,4',flow:false,filter:'url(#fR)'});
+  var fm=document.getElementById('fault-mark'),fc=document.getElementById('fm-c'),fx=document.getElementById('fm-x');
+  var cx=CXY[cid]?CXY[cid].x:500,cy=CXY[cid]?CXY[cid].y:268;
+  fm.style.display='block';fc.setAttribute('cx',cx);fc.setAttribute('cy',cy);fx.setAttribute('x',cx);fx.setAttribute('y',cy+5);
+  var aff=[];for(var n in PATHS){if(PATHS[n].indexOf(cid)>=0)aff.push(n);}
+  for(var i=0;i<aff.length;i++)setNS(aff[i],'fault');
+  updStats();
+  document.getElementById('fstatus').textContent='FAULT: '+cid;document.getElementById('fstatus').style.display='inline';
+  document.getElementById('rbtn').style.display='inline-block';
+  document.getElementById('s-time').textContent='...';document.getElementById('s-time').style.color='#ff8c00';
+  var steps,title,rm;
+  if(type==='nop'){title='NOP Fault W161';steps=[{t:'Fault on W161 -- NOP segment (normally open)',ms:0},{t:'Relay 67/67N isolates faulted segment',ms:200},{t:'NOP was already open -- ZERO substations affected',ms:600},{t:'Network fully operational -- N-1 proven',ms:1000}];rm=1000;}
+  else if(type==='direct'){title='Direct Feeder Fault (N-1)';steps=[{t:'Fault on '+cid+' -- direct MSS feeder to '+to,ms:0},{t:'Relay 50/51 trips MSS VCB < 100ms',ms:200},{t:to+' Bus A de-energised',ms:500},{t:to+' bus coupler auto-closes',ms:800},{t:to+' RESTORED from Bus B',ms:1100}];rm=1100;}
+  else if(type==='branch'){title='Branch Feeder Fault (N-1)';steps=[{t:'Fault on '+cid+' -- branch to '+to,ms:0},{t:'Relay 50/51 trips feeder VCB at DS',ms:150},{t:to+' Bus A loses supply',ms:450},{t:to+' bus coupler auto-closes',ms:750},{t:to+' RESTORED from Bus B',ms:1050}];rm=1050;}
+  else{var via=(cid==='W141'||cid==='W151')?'Bus B -- DS-03 -- NOP':'Bus A -- DS-01 -- NOP';title='Ring Cable Fault (N-1)';steps=[{t:'Fault on ring cable '+cid,ms:0},{t:'Directional relays 67/67N trip both ends < 150ms',ms:150},{t:'Segment isolated: '+from+' to '+to,ms:400},{t:'Affected substations temporarily de-energised',ms:700},{t:'SCADA closes NOP -- alternate path: '+via,ms:2000},{t:'ALL SUBSTATIONS RESTORED -- network 100%',ms:3500}];rm=3500;}
+  bldSeq(steps,title);animSeq(steps);
+  var isR=(type==='ring'),af=aff.slice();
+  tmrs.push(setTimeout(function(){
+    if(type==='nop'){document.getElementById('seq-ok').style.display='block';document.getElementById('s-time').textContent='< 1s';document.getElementById('s-time').style.color='#00ff88';document.getElementById('fstatus').style.display='none';document.getElementById('okmsg').textContent='N-1 SATISFIED';document.getElementById('okmsg').style.display='inline';return;}
+    if(isR)setNOP(true);
+    for(var i=0;i<af.length;i++){(function(n,idx){tmrs.push(setTimeout(function(){setNS(n,'flashing');tmrs.push(setTimeout(function(){setNS(n,'restored');ripple(n,'#00ff88');},380));},idx*220));})(af[i],i);}
+    tmrs.push(setTimeout(function(){document.getElementById('seq-ok').style.display='block';document.getElementById('s-time').textContent=isR?'< 10s':'< 1s';document.getElementById('s-time').style.color='#00ff88';document.getElementById('fstatus').style.display='none';document.getElementById('okmsg').textContent='NETWORK RESTORED';document.getElementById('okmsg').style.display='inline';updStats();},af.length*220+600));
+  },isR?3500:1200));
+}
+function nodeClick(id){
+  if(mode==='fault'&&!fC&&!fDS&&DSF[id]){trigDS(id);return;}
+  if(mode!=='view')return;
+  closeAll();
+  var info=NI[id];if(!info)return;
+  document.getElementById('ip-id').textContent=id;
+  document.getElementById('ip-id').style.color=info.color;
+  document.getElementById('ip-type').textContent=info.type;
+  var html='';
+  for(var i=0;i<info.rows.length;i++){html+='<div class="pr"><span class="pk">'+info.rows[i][0]+'</span><span class="pv">'+info.rows[i][1]+'</span></div>';}
+  if(info.bldgs&&info.bldgs.length>0){
+    var tot=0;for(var j=0;j<info.bldgs.length;j++){tot+=info.bldgs[j][1];}
+    html+='<div class="bldg-list"><div class="bldg-t">Connected Facilities</div>';
+    for(var k=0;k<info.bldgs.length;k++){var b=info.bldgs[k];var pj=b[2]>0?'Proj '+b[2]:'--';html+='<div class="bldg-row"><span class="bldg-name">['+pj+'] '+b[0]+'</span><span class="bldg-kw">'+(b[1]>0?b[1]+' kW':'AGL')+'</span></div>';}
+    if(tot>0){html+='<div class="bldg-total"><span>Total Installed</span><span>'+tot.toLocaleString()+' kW</span></div>';}
+    html+='</div>';
+  }
+  if(id!=='MSS'){var st=nSt[id]||'ok';var cls=st==='fault'?'fl':st==='orange'?'or':st==='restored'?'rs':'ok';var lbl=st==='fault'?'SUPPLY LOST':st==='orange'?'RESTORED VIA NOP':st==='restored'?'RESTORED VIA NOP':'ENERGISED';html+='<div class="pst '+cls+'">'+lbl+'</div>';}
+  if(id.indexOf('DS')===0){html+='<div class="ds-note">In FAULT SIM mode: click this DS to simulate N-2 total switching node loss</div>';}
+  document.getElementById('ip-body').innerHTML=html;
+  document.getElementById('info-panel').style.display='flex';
+  document.getElementById('panel-overlay').style.display='block';
+}
+function trigDS(dsId){
+  fDS=dsId;closeAll();
+  var dsf=DSF[dsId];
+  setNS(dsId,'fault');
+  for(var i=0;i<dsf.direct.length;i++)setNS(dsf.direct[i],'fault');
+  for(var j=0;j<dsf.viaRing.length;j++)setNS(dsf.viaRing[j],'fault');
+  updStats();
+  document.getElementById('fstatus').textContent=dsId+' TOTAL LOSS';document.getElementById('fstatus').style.display='inline';
+  document.getElementById('rbtn').style.display='inline-block';
+  document.getElementById('s-time').textContent='...';document.getElementById('s-time').style.color='#ff8c00';
+  bldSeq(dsf.steps,dsId+' Total Loss -- N-2 Event');animSeq(dsf.steps);
+  for(var k=0;k<dsf.steps.length;k++){(function(step){
+    if(step.partial){tmrs.push(setTimeout(function(){setNOP(true);for(var v=0;v<dsf.viaRing.length;v++){(function(n,idx){tmrs.push(setTimeout(function(){setNS(n,'flashing');tmrs.push(setTimeout(function(){setNS(n,'orange');ripple(n,'#ff8c00');updStats();},380));},idx*220));})(dsf.viaRing[v],v);}},step.ms));}
+    if(step.done){tmrs.push(setTimeout(function(){document.getElementById('seq-n2').style.display='block';document.getElementById('n2msg').textContent='N-2 -- PARTIAL RESTORATION';document.getElementById('n2msg').style.display='inline';document.getElementById('fstatus').style.display='none';document.getElementById('s-time').textContent='Partial';document.getElementById('s-time').style.color='#ff8c00';updStats();},step.ms+400));}
+  })(dsf.steps[k]);}
+}
+var hs=document.querySelectorAll('.cable-hit');
+for(var ci=0;ci<hs.length;ci++){hs[ci].addEventListener('click',function(){
+  if(mode!=='view')return;
+  var g=this.closest('g[data-cable]');if(!g)return;
+  closeAll();
+  document.getElementById('cp-id').textContent=g.dataset.cable;
+  var html='<div class="pr"><span class="pk">From</span><span class="pv">'+g.dataset.from+'</span></div>';
+  html+='<div class="pr"><span class="pk">To</span><span class="pv">'+g.dataset.to+'</span></div>';
+  html+='<div class="pr"><span class="pk">Cable type</span><span class="pv">'+g.dataset.size+'</span></div>';
+  html+='<div class="pr"><span class="pk">Route length</span><span class="pv">'+g.dataset.dist+'</span></div>';
+  html+='<div class="pr"><span class="pk">Installation</span><span class="pv">Underground HDPE duct -- IEC 60502-2</span></div>';
+  html+='<div class="pr"><span class="pk">Make</span><span class="pv">Prysmian YE3SV XLPE</span></div>';
+  if(g.dataset.why){html+='<div class="why"><div class="why-t">Why 240mm2 on ring backbone?</div><div class="why-b">'+g.dataset.why+'</div></div>';}
+  document.getElementById('cp-body').innerHTML=html;
+  document.getElementById('cable-panel').style.display='flex';
+  document.getElementById('panel-overlay').style.display='block';
+});}
+function resetAll(){
+  clrT();fC=null;fDS=null;nSt={};
+  var ids=Object.keys(NC);for(var i=0;i<ids.length;i++)setNS(ids[i],'ok');
+  var oc={W141:{s:'#e8c84a',w:'3',d:'12,8',f:true},W151:{s:'#e8c84a',w:'3',d:'12,8',f:true},W161:{s:'#e8c84a',w:'3',d:'6,5',f:false},W171:{s:'#e8c84a',w:'3',d:'12,8',f:true},W118:{s:'#ff6b35',w:'2',d:'4,3',f:false},W108:{s:'#ff6b35',w:'2',d:'4,3',f:false},W101:{s:'#00ff88',w:'2',d:'',f:false},W102:{s:'#00ff88',w:'2',d:'',f:false},W103:{s:'#ff6b35',w:'2',d:'',f:false},W302:{s:'#b47aff',w:'1.5',d:'5,3',f:false},W104:{s:'#00ff88',w:'2',d:'',f:false},W106:{s:'#00c8ff',w:'2.5',d:'',f:false},W107:{s:'#ff6b35',w:'2',d:'',f:false},W303:{s:'#00ff88',w:'2',d:'5,3',f:false}};
+  for(var k in oc)sC(k,{stroke:oc[k].s,sw:oc[k].w,dash:oc[k].d,flow:oc[k].f,filter:''});
+  setNOP(false);
+  document.getElementById('fault-mark').style.display='none';
+  document.getElementById('ripple-g').innerHTML='';
+  document.getElementById('seq-panel').style.display='none';
+  document.getElementById('fstatus').style.display='none';
+  document.getElementById('n2msg').style.display='none';
+  document.getElementById('okmsg').style.display='none';
+  document.getElementById('rbtn').style.display='none';
+  document.getElementById('s-supply').textContent='100%';document.getElementById('s-supply').style.color='#00ff88';
+  document.getElementById('s-nodes').textContent=TOTAL+'/'+TOTAL;document.getElementById('s-nodes').style.color='#e8c84a';
+  document.getElementById('s-time').textContent='--';document.getElementById('s-time').style.color='#4a6a8a';
+  document.getElementById('pulse').style.background='#00ff88';document.getElementById('pulse').style.animation='pulse 2s infinite';
+  closeAll();
+}
+</script>
+</body>
+</html>
